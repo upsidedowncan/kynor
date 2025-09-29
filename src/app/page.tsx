@@ -26,9 +26,7 @@ type ChatCompletionMessage = {
 function generateId(): string {
   const hasCrypto = typeof crypto !== "undefined";
   const c = hasCrypto ? crypto : undefined;
-  // @ts-expect-error randomUUID may not exist on some browsers
   if (c?.randomUUID) return c.randomUUID();
-  // @ts-expect-error getRandomValues may not exist on some browsers
   const bytes: Uint8Array = c?.getRandomValues ? c.getRandomValues(new Uint8Array(16)) : new Uint8Array(Array.from({ length: 16 }, () => Math.floor(Math.random() * 256)));
   bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
   bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
@@ -372,11 +370,11 @@ export default function Home() {
     setChats(prev => [{ id, title: "New chat", messages: [] }, ...prev]);
   }
 
-  function handleSelect(_id: string) {
+  function handleSelect(): void {
     setSidebarOpen(false);
   }
 
-  function handleRegenerate(_id: string) {
+  function handleRegenerate(): void {
     const lastUser = [...messages].reverse().find(m => m.role === "user");
     if (!lastUser) return;
     void handleSend(lastUser.content);
