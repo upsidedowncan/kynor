@@ -4,6 +4,8 @@
 import { useEffect, useMemo, useState } from "react";
 import OpenAI from "openai";
 
+type Role = "user" | "assistant" | "system";
+
 type Message = {
   id: string;
   role: "user" | "assistant";
@@ -16,15 +18,24 @@ type Chat = {
   messages: Message[];
 };
 
+type ChatCompletionMessage = {
+  role: Role;
+  content: string;
+};
+
 // Функция для генерации ID, совместимого с мобильными устройствами (заменяет crypto.randomUUID)
 function generateId(): string {
-  const c: any = (typeof crypto !== "undefined" ? crypto : undefined);
-  if (c?.randomUUID) return c.randomUUID();
-  const bytes: Uint8Array = c?.getRandomValues ? c.getRandomValues(new Uint8Array(16)) : new Uint8Array(Array.from({ length: 16 }, () => Math.floor(Math.random() * 256)));
+  const c: Crypto | undefined = typeof crypto !== "undefined" ? (crypto as Crypto) : undefined;
+  if ((c as any)?.randomUUID) return (c as any).randomUUID();
+  const bytes: Uint8Array = (c as any)?.getRandomValues ? (c as any).getRandomValues(new Uint8Array(16)) : new Uint8Array(Array.from({ length: 16 }, () => Math.floor(Math.random() * 256)));
   bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
   bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
   const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0"));
   return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`;
+}
+
+function mapToChatMessages(items: Message[]): ChatCompletionMessage[] {
+  return items.map((m) => ({ role: m.role as Role, content: m.content }));
 }
 
 function Topbar({ onToggleSidebar, onOpenSettings, theme, toggleTheme }: {
@@ -339,14 +350,15 @@ export default function Home() {
       const chosenModel = SUPPORTED.has(model) ? model : "openai/gpt-oss-20b";
       const completion = await openai.chat.completions.create({
         model: chosenModel,
-        messages: [...messages, user].map(m => ({ role: m.role, content: m.content })) as any,
+        messages: mapToChatMessages([...messages, user]) as any,
         temperature: 0.7,
       });
-      const content = completion.choices?.[0]?.message?.content || "(no response)";
+      const content: string = completion.choices?.[0]?.message?.content || "(no response)";
       const assistant: Message = { id: generateId(), role: "assistant", content };
       setChats(prev => prev.map(c => c.id === currentId ? { ...c, messages: [...c.messages, assistant] } : c));
-    } catch (e: any) {
-      const assistant: Message = { id: generateId(), role: "assistant", content: e?.message || "Ошибка запроса к модели." };
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : "Ошибка запроса к модели.";
+      const assistant: Message = { id: generateId(), role: "assistant", content: errorMessage };
       setChats(prev => prev.map(c => c.id === currentId ? { ...c, messages: [...c.messages, assistant] } : c));
     } finally {
       setTyping(false);
@@ -358,19 +370,14 @@ export default function Home() {
     setChats(prev => [{ id, title: "New chat", messages: [] }, ...prev]);
   }
 
-  function handleSelect(id: string) {
+  function handleSelect(_id: string) {
     setSidebarOpen(false);
   }
 
-  function handleRegenerate(id: string) {
+  function handleRegenerate(_id: string) {
     const lastUser = [...messages].reverse().find(m => m.role === "user");
     if (!lastUser) return;
-    setTyping(true);
-    setTimeout(() => {
-      const assistant: Message = { id: generateId(), role: "assistant", content: `Обновлённый ответ: ${lastUser.content}` };
-      setChats(prev => prev.map(c => c.id === currentId ? { ...c, messages: [...c.messages, assistant] } : c));
-      setTyping(false);
-    }, 700);
+    void handleSend(lastUser.content);
   }
 
   function handleClear() {
